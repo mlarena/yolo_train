@@ -1,29 +1,30 @@
-﻿# Garbage Detection — обучение YOLO11
+# Обучение YOLO11 / YOLO26 на своём датасете
 
-Детекция мусора на изображениях: одна модель, один класс `garbage`.
-Датасет Roboflow v8 (CC BY 4.0): 4730 изображений train, 629 valid, 418 test.
+Проект — тонкая обёртка над Ultralytics для обучения детектора на **любом** датасете
+в YOLO-формате (Roboflow, CVAT, собственная разметка). Датасет задаётся в `config.json`,
+результаты раскладываются по датасетам и моделям автоматически.
+
+Поддерживаются задачи детекции (`detect`) и обе линейки моделей: `yolo11*` и `yolo26*`.
 
 ---
 
 ## 1. Состав проекта
 
 ```
-yolo_project/
+<корень проекта>/
 ├── config.json                      # НАСТРОЙКА: путь к датасету для train.py
-├── datasets/                        # все датасеты (в git не попадают)
-│   ├── Garbage Detection.v8i.yolov11/
-│   │   ├── data.yaml                # конфиг: пути к сплитам, классы
-│   │   ├── train/{images,labels}/
-│   │   ├── valid/{images,labels}/
-│   │   └── test/{images,labels}/
-│   ├── Road-damage.v3i.yolov11/
-│   └── Road-damage.v3i.yolo26/
+├── datasets/                        # датасеты (в git не попадают)
+│   └── <имя-датасета>/
+│       ├── data.yaml                # конфиг датасета: сплиты, классы
+│       ├── train/{images,labels}/
+│       ├── valid/{images,labels}/
+│       └── test/{images,labels}/
 ├── result/                          # результаты обучения (в git не попадают)
 │   └── <датасет>/<модель>/runs/<прогон>/
-├── train.py                         # скрипт обучения (YOLO11 и YOLO26)
+├── train.py                         # скрипт обучения
 ├── download_models.py               # предзагрузка весов yolo11/yolo26
-├── yolo11n.pt ... yolo11x.pt        # веса YOLO11 (5.4–109 МБ)
-├── yolo26n.pt ... yolo26x.pt        # веса YOLO26 (5.3–113 МБ)
+├── yolo11n.pt ... yolo11x.pt        # веса YOLO11
+├── yolo26n.pt ... yolo26x.pt        # веса YOLO26
 ├── requirements.txt                 # python-зависимости
 ├── SETUP.md                         # что установить (Windows / Debian)
 ├── README.md                        # этот файл
@@ -31,17 +32,46 @@ yolo_project/
 └── .venv/                           # виртуальное окружение
 ```
 
-Результаты обучения складываются в `result/<имя датасета>/<имя модели>/runs/<имя прогона>/`.
-В пути есть и датасет, и модель, поэтому прогоны разных экспериментов не смешиваются:
+Каталог `datasets/` — только соглашение: датасет может лежать где угодно, достаточно
+указать путь к его `data.yaml` в `config.json`.
+
+Структура датасета — стандартная для Ultralytics:
+
+```
+<имя-датасета>/
+├── data.yaml
+├── train/images/*.jpg    train/labels/*.txt
+├── valid/images/*.jpg    valid/labels/*.txt
+└── test/images/*.jpg     test/labels/*.txt
+```
+
+Минимальный `data.yaml`:
+
+```yaml
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 2
+names: ['class_a', 'class_b']
+```
+
+Разметка — по одному `.txt` на изображение, в каждой строке
+`class_id x_center y_center width height` (нормализовано 0..1).
+Пустой `.txt` = изображение без объектов.
+
+### 1.1 Куда складываются результаты
+
+```
+result/<имя каталога датасета>/<имя модели>/runs/<имя прогона>/
+```
 
 ```
 result/
-├── Garbage Detection.v8i.yolov11/
-│   ├── yolo11n/runs/train/          # python train.py
-│   ├── yolo26n/runs/train/          # --model yolo26n.pt
-│   └── yolo26s/runs/exp2/           # --model yolo26s.pt --name exp2
-└── Road-damage.v3i.yolov11/
-    └── yolo26n/runs/train/          # --data datasets/Road-damage.v3i.yolov11/data.yaml
+└── <датасет>/
+    ├── yolo11n/runs/train/          # python train.py
+    ├── yolo26n/runs/train/          # --model yolo26n.pt
+    └── yolo26s/runs/exp2/           # --model yolo26s.pt --name exp2
 ```
 
 Имя модели берётся из `--model`: `yolo26s.pt` → `yolo26s`, `yolo26n-p2.yaml` → `yolo26n-p2`.
@@ -49,8 +79,7 @@ result/
 имя модели сохраняется — новый прогон попадёт в `yolo11s/runs/<новый --name>`.
 
 В git не попадают: `.venv/`, `result/`, веса (`*.pt`, `*.onnx`, ...), логи, `__pycache__/`
-и весь каталог `datasets/` (десятки МБ изображений) — датасеты хранятся отдельно.
-Если датасет всё же нужен в репозитории, уберите его из
+и весь каталог `datasets/`. Если датасет всё же нужен в репозитории, уберите его из
 `.gitignore` и подключите Git LFS (команда-подсказка есть в комментарии внутри файла).
 
 ---
@@ -100,17 +129,17 @@ python download_models.py --dir weights   # сохранить в ./weights
 
 Файлы кладутся в корень проекта, рядом с `train.py`.
 
-### 3.1 YOLO11 (по умолчанию в `train.py`)
+### 3.1 YOLO11
 
 | Файл | Размер | Параметры | mAP50-95 (COCO) | Когда брать |
 |---|---|---|---|---|
 | `yolo11n.pt` | 5.4 МБ | 2.6M | 39.5 | быстрый черновик, слабый GPU/CPU |
 | `yolo11s.pt` | 18.4 МБ | 9.4M | 47.0 | баланс скорость/качество |
-| `yolo11m.pt` | 38.8 МБ | 20.1M | 51.5 | хороший компромисс для 5 тыс. изображений |
+| `yolo11m.pt` | 38.8 МБ | 20.1M | 51.5 | средний датасет, есть GPU |
 | `yolo11l.pt` | 49.0 МБ | 25.3M | 53.4 | максимум качества при наличии GPU |
 | `yolo11x.pt` | 109.3 МБ | 56.9M | 54.7 | только если данных много и есть мощная GPU |
 
-### 3.2 YOLO26 (новее, точнее при том же размере)
+### 3.2 YOLO26
 
 | Файл | Размер | Параметры | mAP50-95 (COCO) | e2e (NMS-free) |
 |---|---|---|---|---|
@@ -120,12 +149,12 @@ python download_models.py --dir weights   # сохранить в ./weights
 | `yolo26l.pt` | 50.7 МБ | 24.8M | 55.0 | 54.4 |
 | `yolo26x.pt` | 113.2 МБ | 55.7M | 57.5 | 56.9 |
 
-Размеры и метрики — официальные данные Ultralytics для COCO; на вашем датасете
+Размеры и метрики — официальные данные Ultralytics для COCO; на своём датасете
 абсолютные значения будут другими, важен порядок «n < s < m < l < x».
-`yolo26n` при почти том же размере, что `yolo11n`, даёт +1.4 mAP и заметно быстрее
-на CPU (ONNX), поэтому для нового проекта разумно начинать именно с него.
+`yolo26n` при почти том же размере, что `yolo11n`, точнее и заметно быстрее на CPU,
+поэтому для нового проекта разумно начинать именно с него.
 
-Скачанные файлы уже лежат в проекте (обе линейки, все десять). Использование:
+Использование:
 
 ```bash
 python train.py --model yolo11s.pt
@@ -155,44 +184,45 @@ python -c "import zipfile; print(zipfile.is_zipfile('yolo11n.pt'))"
 
 ```json
 {
-  "data": "datasets/Garbage Detection.v8i.yolov11/data.yaml"
+  "data": "datasets/<имя-датасета>/data.yaml"
 }
 ```
 
 Правила:
 
 - единственный обязательный ключ — `data`, путь к `data.yaml` датасета;
-- относительный путь считается от корня проекта (можно и абсолютный);
+- относительный путь считается от корня проекта, абсолютный тоже подходит;
 - имя каталога результатов берётся автоматически из имени папки датасета
-  (`.../datasets/Road-damage.v3i.yolov11/data.yaml` → `result/Road-damage.v3i.yolov11/`),
+  (`.../datasets/<имя-датасета>/data.yaml` → `result/<имя-датасета>/`),
   поэтому в конфиге ничего дублировать не нужно;
 - пустой файл, отсутствующий ключ `data` или битый JSON → скрипт завершится с кодом 2
   и подскажет, что записать;
-- разово переопределить датасет без правки конфига: `--data "datasets/.../data.yaml"`.
+- разово переопределить датасет без правки конфига: `--data "<путь к data.yaml>"`.
 
 Сменить датасет — отредактировать одну строку:
 
 ```json
-{"data": "datasets/Road-damage.v3i.yolov11/data.yaml"}
+{"data": "datasets/<другой-датасет>/data.yaml"}
 ```
 
 Проверить, что скрипт видит конфиг, можно по первым строкам вывода:
 
 ```
-[info] config    : E:\yolo_project\config.json
-[info] dataset   : Road-damage.v3i.yolov11
+[info] config    : <корень проекта>/config.json
+[info] dataset   : <имя-датасета>
 [info] model dir : yolo26s
-[info] results   : E:\yolo_project\result\Road-damage.v3i.yolov11\yolo26s\runs	rain
+[info] results   : <корень проекта>/result/<имя-датасета>/yolo26s/runs/train
 ```
 
-### 4.2 Проверка, что всё на месте (2–5 минут)
+### 4.2 Проверка, что всё на месте
 
 ```bash
 python train.py --epochs 2 --imgsz 320 --batch 4 --name smoke_test
 ```
 
 Скрипт печатает сводку по датасету, устройство и стартует обучение. Если 2 эпохи
-прошли без ошибок — можно запускать полный прогон.
+прошли без ошибок — можно запускать полный прогон. Такой прогон удобно удалить
+вместе с каталогом `result/<датасет>/<модель>/runs/smoke_test/`.
 
 ### 4.3 Полное обучение
 
@@ -216,8 +246,8 @@ python train.py --batch 4 --workers 2 --device cpu
 # две GPU
 python train.py --device 0,1 --batch 32
 
-# свой путь к датасету
-python train.py --data /data/datasets/garbage/data.yaml
+# датасет вне каталога datasets, разово
+python train.py --data "<путь к data.yaml>"
 
 # продолжить прерванное обучение
 python train.py --resume
@@ -268,7 +298,7 @@ python train.py --model yolo26n.pt
 
 - **Две головы.** По умолчанию используется one-to-many (с NMS) — она точнее.
   Для инференса без NMS добавьте `nms=False` в `predict`/`val`/`export`:
-  `yolo detect predict model="result/Garbage Detection.v8i.yolov11/yolo26n/runs/train/weights/best.pt" source=... nms=False`
+  `yolo detect predict model="result/<датасет>/yolo26n/runs/train/weights/best.pt" source=<путь> nms=False`
 - **Нет DFL** — проще экспорт в ONNX/TensorRT, быстрее на CPU.
 - **`yolo26n-p2.yaml` / `yolo26-p6.yaml`** — только архитектуры без предобученных
   весов (мелкие объекты / большой вход); обучать с нуля, `--model yolo26n-p2.yaml`.
@@ -285,7 +315,7 @@ python train.py --model yolo26n.pt --epochs 1 --imgsz 320 --batch 2 --name yolo2
 ## 5. Что получится после обучения
 
 ```
-result/Road-damage.v3i.yolov11/yolo26n/runs/train/
+result/<датасет>/<модель>/runs/<прогон>/
 ├── weights/
 │   ├── best.pt          # лучшая модель — её и используем
 │   └── last.pt          # состояние последней эпохи (для --resume)
@@ -331,17 +361,20 @@ Ultralytics вычищает это состояние (`epoch = -1`, `optimizer
 | `metrics/mAP50(B)` | основная метрика качества | > 0.7 — рабочее качество |
 | `metrics/mAP50-95(B)` | строгая метрика (точность рамки) | > 0.45 |
 
+Ориентиры зависят от задачи и сложности классов — сравнивайте прежде всего
+модели между собой на одном и том же датасете.
+
 Признаки проблем:
 
 - **train loss падает, val loss растёт** → переобучение: меньше эпох, больше аугментаций,
-  модель поменьше (`yolo11n`).
+  модель поменьше (`yolo11n` / `yolo26n`).
 - **обе кривые вышли на плато** → обычно достаточно; можно взять модель крупнее.
 - **mAP почти 0** → проверить разметку и что `names` в `data.yaml` совпадает с классами в labels.
 
 Оценка на отложенном тесте (после обучения):
 
 ```bash
-yolo detect val model="result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/weights/best.pt" data="datasets/Garbage Detection.v8i.yolov11/data.yaml" split=test
+yolo detect val model="result/<датасет>/<модель>/runs/train/weights/best.pt" data="<путь к data.yaml>" split=test
 ```
 
 ---
@@ -349,7 +382,7 @@ yolo detect val model="result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/w
 ## 7. Проверка модели на своих изображениях
 
 ```bash
-yolo detect predict model="result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/weights/best.pt" source=path/to/images conf=0.25 save=True
+yolo detect predict model="result/<датасет>/<модель>/runs/train/weights/best.pt" source=<путь к изображениям> conf=0.25 save=True
 ```
 
 Из Python:
@@ -357,8 +390,8 @@ yolo detect predict model="result/Garbage Detection.v8i.yolov11/yolo11n/runs/tra
 ```python
 from ultralytics import YOLO
 
-model = YOLO("result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/weights/best.pt")
-results = model.predict("path/to/image.jpg", conf=0.25)
+model = YOLO("result/<датасет>/<модель>/runs/train/weights/best.pt")
+results = model.predict("<путь к изображению>", conf=0.25)
 print(results[0].boxes.xyxy, results[0].boxes.conf, results[0].names)
 ```
 
@@ -373,10 +406,10 @@ print(results[0].boxes.xyxy, results[0].boxes.conf, results[0].names)
 запустите обучение от лучших весов:
 
 ```bash
-python train.py --model "result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/weights/best.pt" --epochs 50 --name ft
+python train.py --model "result/<датасет>/<модель>/runs/train/weights/best.pt" --epochs 50 --name ft
 ```
 
-Новый прогон попадёт в тот же каталог модели: `result/<датасет>/yolo11n/runs/ft/`
+Новый прогон попадёт в тот же каталог модели: `result/<датасет>/<модель>/runs/ft/`
 (имя модели берётся из пути чекпоинта, а не из имени файла `best`).
 
 Отличие от `--resume`: `--model best.pt` начинает новый прогон с текущих весов
@@ -387,24 +420,25 @@ python train.py --model "result/Garbage Detection.v8i.yolov11/yolo11n/runs/train
 ## 9. Экспорт модели
 
 ```bash
-yolo export model="result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/weights/best.pt" format=onnx imgsz=640
+yolo export model="result/<датасет>/<модель>/runs/train/weights/best.pt" format=onnx imgsz=640
 ```
 
 Форматы: `onnx`, `openvino`, `engine` (TensorRT), `torchscript`, `tflite` и др.
 
 ---
 
-## 10. Перенос на Debian
+## 10. Перенос на другую машину
 
 1. Скопируйте каталог проекта **без** `.venv` и `result/` (окружение создаётся заново).
-   Файлы `yolo11*.pt`, каталог `datasets/` и `config.json` скопируйте — тогда на сервере
-   не понадобится интернет ни для весов, ни для данных.
+   Файлы `yolo*.pt`, каталог с датасетами и `config.json` скопируйте — тогда на новой
+   машине не понадобится интернет ни для весов, ни для данных.
 2. `python3 -m venv .venv && source .venv/bin/activate`
 3. Установите зависимости по `SETUP.md`.
 4. Запустите `python train.py --device 0`.
 
 Пути в `data.yaml` относительные, поэтому перенос каталога целиком ничего не ломает.
-Если датасет лежит в другом месте — передайте `--data /path/to/data.yaml`.
+Если датасет лежит в другом месте — поправьте `config.json` или передайте
+`--data "<путь к data.yaml>"`.
 
 ---
 
@@ -414,11 +448,11 @@ yolo export model="result/Garbage Detection.v8i.yolov11/yolo11n/runs/train/weigh
 |---|---|
 | `missing dependency: ultralytics` | активируйте `.venv` и выполните `pip install -r requirements.txt` |
 | `config file is empty` / `no dataset path` | заполните `config.json`: `{"data": "datasets/<датасет>/data.yaml"}` |
-| `data.yaml not found` | проверьте значение `data` в `config.json` или передайте `--data "datasets/.../data.yaml"` |
+| `data.yaml not found` | проверьте значение `data` в `config.json` или передайте `--data "<путь>"` |
 | результаты попали не в тот датасет | путь считается от `config.json`; посмотрите строки `[info] dataset` и `[info] model dir` в начале вывода |
 | `not a resumable checkpoint` | прогон уже завершён; для дообучения используйте `--model .../weights/best.pt` |
 | `CUDA out of memory` | уменьшите `--batch` (16 → 8 → 4), затем `--imgsz` (640 → 512) |
-| обучение на CPU идёт очень долго | 4730 изображений на CPU — это часы-дни на эпоху-сотню; используйте GPU или уменьшите `--imgsz 320` для черновика |
+| обучение на CPU идёт очень долго | используйте GPU или уменьшите `--imgsz 320` для черновика |
 | зависает на старте в Windows | `--workers 2`, иногда `--workers 0` |
 | ошибка `DataLoader worker ... exited unexpectedly` | уменьшите `--workers` (Windows), проверьте свободную RAM |
 | нужно прервать и продолжить | Ctrl+C, затем `python train.py --resume` |
