@@ -12,6 +12,7 @@ dist/
 venv/
 env/
 ENV/
+temp/
 .python-version
 
 # --- Training artifacts (Ultralytics) ---
