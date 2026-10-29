@@ -1,0 +1,61 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Training artifacts (Ultralytics) ---
+result/
+runs/
+weights/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.openvino/
+*.mlpackage/
+*.pkl
+*.log
+train*.log
+nohup.out
+
+# --- Datasets (large binary files, thousands of images) ---
+# All datasets live in ./datasets and are kept out of git; store them separately
+# (cloud/disk) or use Git LFS.
+datasets/
+# Legacy locations, in case a dataset is unpacked into the project root again.
+Garbage Detection.v8i.yolov11/
+Road-damage.v3i.yolo26/
+Road-damage.v3i.yolov11/
+*.zip
+# To track a dataset in git anyway, remove the rules above and use Git LFS:
+#   git lfs track "datasets/**/*.jpg" "datasets/**/*.txt"
+
+# --- Ultralytics / tooling cache ---
+.ultralytics/
+wandb/
+lightning_logs/
+*.cache
+.cache/
+
+# --- OS / editor ---
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp

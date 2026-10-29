@@ -1,0 +1,8 @@
+# Core dependency: pulls in torch, torchvision, opencv, numpy, pyyaml, matplotlib.
+# NOTE: on a GPU machine install the CUDA build of torch BEFORE this file, see SETUP.md.
+# >=8.4.0 is required for YOLO26 (yolo26n/s/m/l/x.pt); YOLO11 works with any 8.3+ build.
+ultralytics>=8.4.0
+
+# Optional: ONNX export and inference with onnxruntime
+# onnx>=1.16.0
+# onnxruntime>=1.19.0
